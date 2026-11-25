@@ -1,0 +1,15 @@
+{
+  "id": "multigravity-ux",
+  "name": "Multigravity UX",
+  "description": "Isolated /btw side-question branches, searchable prompt templates with automatic placeholder selection, one-shot Markdown export, and five curated themes for Paseo.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.17.4"
+  },
+  "translations": {
+    "zh-CN": {
+      "name": "Multigravity 交互套件",
+      "description": "专注 Paseo 原生体验的轻量交互增强：/btw 独立只读旁路快问、可搜索且自动选中占位符的跨端快捷模板、/export 一键导出 Markdown 以及 5 款精选配色主题。"
+    }
+  }
+}
