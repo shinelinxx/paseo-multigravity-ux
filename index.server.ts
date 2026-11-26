@@ -10,6 +10,7 @@ import {
   watchBtwCountsSubscription,
   watchBtwSubscription,
   watchSettingsSubscription,
+  type MgSettings,
 } from "./shared/contracts";
 
 export default function contribute(server: PluginServerContext) {
@@ -43,22 +44,36 @@ export default function contribute(server: PluginServerContext) {
   server.handle(watchBtwSubscription, (input, ctx) => btw.watchBranches(input, ctx));
   server.handle(watchBtwCountsSubscription, (input, ctx) => btw.watchCounts(input, ctx));
   server.handle(watchSettingsSubscription, (_input, ctx) => {
-    const pushState = async () => {
-      if (ctx.signal.aborted) return;
-      const state = await settings.read().catch(() => null);
-      if (state?.status === "ready" && !ctx.signal.aborted) {
-        await ctx.push({ revision: state.revision, values: state.values }).catch(() => {});
-      }
+    if (ctx.signal.aborted) return;
+    let lastRevision: string | null = null;
+
+    const pushIfChanged = (revision: string, values: MgSettings) => {
+      if (ctx.signal.aborted || revision === lastRevision) return;
+      lastRevision = revision;
+      void ctx.push({ revision, values }).catch(() => {});
     };
+
     const unsub = settings.subscribe((state) => {
-      if (state.status === "ready" && !ctx.signal.aborted) {
-        void ctx.push({ revision: state.revision, values: state.values }).catch(() => {});
+      if (state.status === "ready") {
+        pushIfChanged(state.revision, state.values);
       }
     });
-    ctx.signal.addEventListener("abort", () => {
-      void unsub();
-    });
-    void pushState();
+    ctx.signal.addEventListener(
+      "abort",
+      () => {
+        void unsub();
+      },
+      { once: true },
+    );
+
+    void settings
+      .read()
+      .then((state) => {
+        if (state?.status === "ready") {
+          pushIfChanged(state.revision, state.values);
+        }
+      })
+      .catch(() => {});
   });
 
   return () => {

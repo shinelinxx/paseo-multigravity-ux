@@ -4,6 +4,8 @@ import { DEFAULT_PROMPT_TEMPLATES, type MgSettings } from "../shared/contracts";
 export const BTW_PANEL_ID = "mg-btw";
 export const SETTINGS_SCREEN_ID = "multigravity-ux";
 
+const PLACEHOLDER_RE = /\[[^\[\]\n]{1,64}\]/;
+
 export interface BtwPrefillRequest {
   agentId: string;
   question?: string;
@@ -12,36 +14,57 @@ export interface BtwPrefillRequest {
   seq: number;
 }
 
-const listeners = new Set<() => void>();
+const agentListeners = new Map<string, Set<() => void>>();
+const globalListeners = new Set<() => void>();
 let prefillSeq = 0;
 let pendingPrefill: BtwPrefillRequest | null = null;
 
-function emit() {
-  listeners.forEach((fn) => fn());
+function emitForAgent(agentId: string) {
+  const scoped = agentListeners.get(agentId);
+  if (scoped) {
+    scoped.forEach((fn) => fn());
+  }
+  globalListeners.forEach((fn) => fn());
 }
 
 export function setBtwPrefill(req: Omit<BtwPrefillRequest, "seq">) {
   prefillSeq += 1;
   pendingPrefill = { ...req, seq: prefillSeq };
-  emit();
+  emitForAgent(req.agentId);
 }
 
 export function consumeBtwPrefill(agentId: string): BtwPrefillRequest | null {
   if (!pendingPrefill || pendingPrefill.agentId !== agentId) return null;
   const hit = pendingPrefill;
   pendingPrefill = null;
-  emit();
   return hit;
 }
 
-export function subscribeBtwPrefill(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+export function subscribeBtwPrefill(listener: () => void, agentId?: string): () => void {
+  if (agentId) {
+    let set = agentListeners.get(agentId);
+    if (!set) {
+      set = new Set();
+      agentListeners.set(agentId, set);
+    }
+    set.add(listener);
+    return () => {
+      const current = agentListeners.get(agentId);
+      if (!current) return;
+      current.delete(listener);
+      if (current.size === 0) agentListeners.delete(agentId);
+    };
+  }
+  globalListeners.add(listener);
+  return () => {
+    globalListeners.delete(listener);
+  };
 }
 
 export function clearClientStore() {
   pendingPrefill = null;
-  listeners.clear();
+  agentListeners.clear();
+  globalListeners.clear();
 }
 
 export const FALLBACK_SETTINGS: MgSettings = {
@@ -70,7 +93,7 @@ export async function insertTemplateAndFocus(
 
   composer.setPrompt(nextPrompt);
 
-  const match = /\[[^\[\]\n]{1,64}\]/.exec(templatePrompt);
+  const match = PLACEHOLDER_RE.exec(templatePrompt);
   if (match && typeof match.index === "number") {
     const start = baseOffset + match.index;
     const end = start + match[0].length;

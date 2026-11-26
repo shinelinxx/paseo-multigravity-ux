@@ -9,6 +9,13 @@ interface TimelineRow {
   seqStart: number;
 }
 
+interface MessageRow {
+  role: "user" | "assistant";
+  text: string;
+  timestamp: string;
+  seqStart: number;
+}
+
 const PAGE_LIMIT = 200;
 const MAX_PAGES = 8;
 
@@ -48,32 +55,41 @@ export async function exportMarkdown(
       projection: "projected",
     });
     if (!prev.entries.length) break;
-    chunks.unshift(prev.entries as TimelineRow[]);
+    chunks.push(prev.entries as TimelineRow[]);
     cursor = prev.startCursor;
     hasOlder = prev.hasOlder;
     pages += 1;
   }
 
   const seen = new Set<number>();
-  const entries: TimelineRow[] = [];
-  for (const chunk of chunks) {
+  const entries: MessageRow[] = [];
+  for (let i = chunks.length - 1; i >= 0; i -= 1) {
+    const chunk = chunks[i];
     for (const row of chunk) {
+      const { item } = row;
+      if (item.type !== "user_message" && item.type !== "assistant_message") continue;
+      const text = item.text.trim();
+      if (!text) continue;
       if (seen.has(row.seqStart)) continue;
       seen.add(row.seqStart);
-      entries.push(row);
+      entries.push({
+        role: item.type === "user_message" ? "user" : "assistant",
+        text,
+        timestamp: row.timestamp,
+        seqStart: row.seqStart,
+      });
     }
   }
   entries.sort((a, b) => a.seqStart - b.seqStart);
 
   const turns: Array<{ timestamp: string; user: string; assistant: string[] }> = [];
-  for (const row of entries) {
-    const { item } = row;
-    if (item.type === "user_message" && item.text.trim()) {
-      turns.push({ timestamp: row.timestamp, user: item.text.trim(), assistant: [] });
-    } else if (item.type === "assistant_message" && item.text.trim()) {
+  for (const entry of entries) {
+    if (entry.role === "user") {
+      turns.push({ timestamp: entry.timestamp, user: entry.text, assistant: [] });
+    } else {
       const current = turns[turns.length - 1];
-      if (current) current.assistant.push(item.text.trim());
-      else turns.push({ timestamp: row.timestamp, user: "(Initial)", assistant: [item.text.trim()] });
+      if (current) current.assistant.push(entry.text);
+      else turns.push({ timestamp: entry.timestamp, user: "(Initial)", assistant: [entry.text] });
     }
   }
 

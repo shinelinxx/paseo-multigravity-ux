@@ -17,7 +17,7 @@ import {
   useToast,
 } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import {
   DEFAULT_PROMPT_TEMPLATES,
@@ -44,7 +44,183 @@ const EMPTY_DRAFT: DraftTemplate = {
   pinned: true,
 };
 
-export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
+const EMPTY_MODELS: readonly never[] = [];
+
+type SurfaceTheme = PluginSurfaceProps["theme"];
+
+interface TemplateEditorModalProps {
+  open: boolean;
+  initialTemplate: PromptTemplate | null;
+  theme: SurfaceTheme;
+  onOpenChange: (open: boolean) => void;
+  onSave: (draft: DraftTemplate) => Promise<void>;
+}
+
+const TemplateEditorModal = memo(function TemplateEditorModal({
+  open,
+  initialTemplate,
+  theme,
+  onOpenChange,
+  onSave,
+}: TemplateEditorModalProps) {
+  const { t } = useTranslation(messages);
+  const [draft, setDraft] = useState<DraftTemplate>(EMPTY_DRAFT);
+
+  useEffect(() => {
+    if (!open) return;
+    if (initialTemplate) {
+      setDraft({
+        id: initialTemplate.id,
+        title: initialTemplate.title,
+        subtitle: initialTemplate.subtitle,
+        prompt: initialTemplate.prompt,
+        pinned: initialTemplate.pinned,
+      });
+    } else {
+      setDraft(EMPTY_DRAFT);
+    }
+  }, [open, initialTemplate]);
+
+  const canSave = Boolean(draft.title.trim() && draft.prompt.trim());
+
+  return (
+    <Modal
+      title={draft.id ? t("settingsEditTemplate") : t("settingsNewTemplate")}
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      {open ? (
+        <Modal.Content>
+          <View style={{ gap: 12 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: theme.colors.foreground, fontSize: 12.5, fontWeight: "600" }}>
+                {t("tplTitleLabel")}
+              </Text>
+              <TextInput
+                value={draft.title}
+                onChangeText={(title) => setDraft((d) => ({ ...d, title }))}
+                placeholder={t("tplTitleLabel")}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.surface0,
+                  color: theme.colors.foreground,
+                  fontSize: 14,
+                }}
+              />
+            </View>
+
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: theme.colors.foreground, fontSize: 12.5, fontWeight: "600" }}>
+                {t("tplSubtitleLabel")}
+              </Text>
+              <TextInput
+                value={draft.subtitle}
+                onChangeText={(subtitle) => setDraft((d) => ({ ...d, subtitle }))}
+                placeholder={t("tplSubtitleLabel")}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.surface0,
+                  color: theme.colors.foreground,
+                  fontSize: 14,
+                }}
+              />
+            </View>
+
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: theme.colors.foreground, fontSize: 12.5, fontWeight: "600" }}>
+                {t("tplPromptLabel")}
+              </Text>
+              <TextInput
+                value={draft.prompt}
+                onChangeText={(prompt) => setDraft((d) => ({ ...d, prompt }))}
+                placeholder={t("tplPromptLabel")}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                multiline
+                style={{
+                  minHeight: 110,
+                  padding: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.surface0,
+                  color: theme.colors.foreground,
+                  fontSize: 13.5,
+                  textAlignVertical: "top",
+                }}
+              />
+            </View>
+
+            <Pressable
+              onPress={() => setDraft((d) => ({ ...d, pinned: !d.pinned }))}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
+                {t("tplPinnedLabel")}
+              </Text>
+              <Icon
+                name={draft.pinned ? "Pin" : "Plus"}
+                size={15}
+                color={draft.pinned ? theme.colors.accent : theme.colors.foregroundMuted}
+              />
+            </Pressable>
+
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
+              <Pressable
+                onPress={() => onOpenChange(false)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 8,
+                  backgroundColor: theme.colors.surface2,
+                }}
+              >
+                <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
+                  {t("tplCancel")}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void onSave(draft)}
+                disabled={!canSave}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 9,
+                  borderRadius: 8,
+                  backgroundColor: theme.colors.accent,
+                  opacity: !canSave ? 0.5 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.accentForeground,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  {t("tplSave")}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal.Content>
+      ) : null}
+    </Modal>
+  );
+});
+
+export function SettingsScreen({ theme, layout, host }: PluginSurfaceProps) {
   const { t } = useTranslation(messages);
   const paseo = usePaseo();
   const settings = useSettings(mgSettings);
@@ -53,9 +229,10 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
   const values = settings.status === "ready" ? settings.values : FALLBACK_SETTINGS;
 
   const providersQuery = useQuery({
-    queryKey: ["mg-providers-snapshot"],
+    queryKey: ["mg-providers-snapshot", host.id],
     queryFn: () => paseo.providers.snapshot(),
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const availableProviders = useMemo(() => {
@@ -72,7 +249,7 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
   const activeProviderEntry = availableProviders.find(
     (p) => p.provider === selectedProvider,
   );
-  const models = activeProviderEntry?.models ?? [];
+  const models = activeProviderEntry?.models ?? EMPTY_MODELS;
   const selectedModel =
     values.btwModel.model && models.some((m) => m.id === values.btwModel.model)
       ? values.btwModel.model
@@ -83,53 +260,90 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
     return m?.thinkingOptions ?? [];
   }, [models, selectedModel]);
 
+  const modeOptions = useMemo(
+    () => [
+      { value: "follow-parent", label: t("settingsBtwModeFollow") },
+      { value: "custom", label: t("settingsBtwModeCustom") },
+    ],
+    [t],
+  );
+
+  const providerOptions = useMemo(
+    () =>
+      availableProviders.map((p) => ({
+        value: p.provider,
+        label: p.label || p.provider,
+      })),
+    [availableProviders],
+  );
+
+  const modelOptions = useMemo(
+    () =>
+      models.map((m) => ({
+        value: m.id,
+        label: m.label || m.id,
+      })),
+    [models],
+  );
+
+  const thinkingSelectOptions = useMemo(
+    () => [
+      { value: "", label: t("settingsDefaultThinking") },
+      ...thinkingOptions.map((opt) => ({
+        value: opt.id,
+        label: opt.label || opt.id,
+      })),
+    ],
+    [thinkingOptions, t],
+  );
+
   const [editorOpen, setEditorOpen] = useState(false);
-  const [draft, setDraft] = useState<DraftTemplate>(EMPTY_DRAFT);
+  const [editingTemplate, setEditingTemplate] = useState<PromptTemplate | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PromptTemplate | null>(null);
 
-  async function saveNext(next: MgSettings, showNotice = true) {
-    if (settings.status !== "ready") return;
-    const ok = await settings.save(next, settings.revision);
-    if (ok) {
-      if (showNotice) toast.show(t("settingsSaved"), { durationMs: 1800 });
-    } else if (settings.saveError) {
-      toast.error(settings.saveError);
-    }
-  }
+  const saveNext = useCallback(
+    async (next: MgSettings, showNotice = true) => {
+      if (settings.status !== "ready") return;
+      const ok = await settings.save(next, settings.revision);
+      if (ok) {
+        if (showNotice) toast.show(t("settingsSaved"), { durationMs: 1800 });
+      } else if (settings.saveError) {
+        toast.error(settings.saveError);
+      }
+    },
+    [settings, toast, t],
+  );
 
-  function openNewTemplate() {
-    setDraft(EMPTY_DRAFT);
+  const openNewTemplate = useCallback(() => {
+    setEditingTemplate(null);
     setEditorOpen(true);
-  }
+  }, []);
 
-  function openEditTemplate(tpl: PromptTemplate) {
-    setDraft({
-      id: tpl.id,
-      title: tpl.title,
-      subtitle: tpl.subtitle,
-      prompt: tpl.prompt,
-      pinned: tpl.pinned,
-    });
+  const openEditTemplate = useCallback((tpl: PromptTemplate) => {
+    setEditingTemplate(tpl);
     setEditorOpen(true);
-  }
+  }, []);
 
-  async function handleSaveTemplate() {
-    const title = draft.title.trim();
-    const prompt = draft.prompt.trim();
-    if (!title || !prompt) return;
-    const record: PromptTemplate = {
-      id: draft.id ?? `tpl-${Date.now()}`,
-      title,
-      subtitle: draft.subtitle.trim(),
-      prompt,
-      pinned: draft.pinned,
-    };
-    const nextTemplates = draft.id
-      ? values.templates.map((item) => (item.id === draft.id ? record : item))
-      : [record, ...values.templates];
-    await saveNext({ ...values, templates: nextTemplates });
-    setEditorOpen(false);
-  }
+  const handleSaveTemplate = useCallback(
+    async (draft: DraftTemplate) => {
+      const title = draft.title.trim();
+      const prompt = draft.prompt.trim();
+      if (!title || !prompt) return;
+      const record: PromptTemplate = {
+        id: draft.id ?? `tpl-${Date.now()}`,
+        title,
+        subtitle: draft.subtitle.trim(),
+        prompt,
+        pinned: draft.pinned,
+      };
+      const nextTemplates = draft.id
+        ? values.templates.map((item) => (item.id === draft.id ? record : item))
+        : [record, ...values.templates];
+      await saveNext({ ...values, templates: nextTemplates });
+      setEditorOpen(false);
+    },
+    [values, saveNext],
+  );
 
   async function handleConfirmDeleteTemplate() {
     if (!pendingDelete) return;
@@ -170,10 +384,7 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
           <SettingsSelect
             label={t("settingsBtwModeLabel")}
             value={values.btwModel.mode}
-            options={[
-              { value: "follow-parent", label: t("settingsBtwModeFollow") },
-              { value: "custom", label: t("settingsBtwModeCustom") },
-            ]}
+            options={modeOptions}
             onValueChange={(mode) => {
               const nextPolicy =
                 mode === "custom"
@@ -193,10 +404,7 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
               <SettingsSelect
                 label={t("settingsBtwProvider")}
                 value={selectedProvider}
-                options={availableProviders.map((p) => ({
-                  value: p.provider,
-                  label: p.label || p.provider,
-                }))}
+                options={providerOptions}
                 onValueChange={(provider) => {
                   const nextProv = availableProviders.find((p) => p.provider === provider);
                   const firstModel = nextProv?.models?.[0]?.id;
@@ -215,10 +423,7 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
                 <SettingsSelect
                   label={t("settingsBtwModel")}
                   value={selectedModel}
-                  options={models.map((m) => ({
-                    value: m.id,
-                    label: m.label || m.id,
-                  }))}
+                  options={modelOptions}
                   onValueChange={(model) => {
                     void saveNext({
                       ...values,
@@ -236,13 +441,7 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
                 <SettingsSelect
                   label={t("settingsBtwThinking")}
                   value={values.btwModel.thinking ?? ""}
-                  options={[
-                    { value: "", label: t("settingsDefaultThinking") },
-                    ...thinkingOptions.map((opt) => ({
-                      value: opt.id,
-                      label: opt.label || opt.id,
-                    })),
-                  ]}
+                  options={thinkingSelectOptions}
                   onValueChange={(thinking) => {
                     void saveNext({
                       ...values,
@@ -348,137 +547,13 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
       </SettingsSection>
 
       {/* Template Create / Edit Modal */}
-      <Modal
-        title={draft.id ? t("settingsEditTemplate") : t("settingsNewTemplate")}
+      <TemplateEditorModal
         open={editorOpen}
+        initialTemplate={editingTemplate}
+        theme={theme}
         onOpenChange={setEditorOpen}
-      >
-        <Modal.Content>
-          <View style={{ gap: 12 }}>
-            <View style={{ gap: 4 }}>
-              <Text style={{ color: theme.colors.foreground, fontSize: 12.5, fontWeight: "600" }}>
-                {t("tplTitleLabel")}
-              </Text>
-              <TextInput
-                value={draft.title}
-                onChangeText={(title) => setDraft((d) => ({ ...d, title }))}
-                placeholder={t("tplTitleLabel")}
-                placeholderTextColor={theme.colors.foregroundMuted}
-                style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surface0,
-                  color: theme.colors.foreground,
-                  fontSize: 14,
-                }}
-              />
-            </View>
-
-            <View style={{ gap: 4 }}>
-              <Text style={{ color: theme.colors.foreground, fontSize: 12.5, fontWeight: "600" }}>
-                {t("tplSubtitleLabel")}
-              </Text>
-              <TextInput
-                value={draft.subtitle}
-                onChangeText={(subtitle) => setDraft((d) => ({ ...d, subtitle }))}
-                placeholder={t("tplSubtitleLabel")}
-                placeholderTextColor={theme.colors.foregroundMuted}
-                style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surface0,
-                  color: theme.colors.foreground,
-                  fontSize: 14,
-                }}
-              />
-            </View>
-
-            <View style={{ gap: 4 }}>
-              <Text style={{ color: theme.colors.foreground, fontSize: 12.5, fontWeight: "600" }}>
-                {t("tplPromptLabel")}
-              </Text>
-              <TextInput
-                value={draft.prompt}
-                onChangeText={(prompt) => setDraft((d) => ({ ...d, prompt }))}
-                placeholder={t("tplPromptLabel")}
-                placeholderTextColor={theme.colors.foregroundMuted}
-                multiline
-                style={{
-                  minHeight: 110,
-                  padding: 10,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surface0,
-                  color: theme.colors.foreground,
-                  fontSize: 13.5,
-                  textAlignVertical: "top",
-                }}
-              />
-            </View>
-
-            <Pressable
-              onPress={() => setDraft((d) => ({ ...d, pinned: !d.pinned }))}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingVertical: 6,
-              }}
-            >
-              <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
-                {t("tplPinnedLabel")}
-              </Text>
-              <Icon
-                name={draft.pinned ? "Pin" : "Plus"}
-                size={15}
-                color={draft.pinned ? theme.colors.accent : theme.colors.foregroundMuted}
-              />
-            </Pressable>
-
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
-              <Pressable
-                onPress={() => setEditorOpen(false)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
-                  borderRadius: 8,
-                  backgroundColor: theme.colors.surface2,
-                }}
-              >
-                <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
-                  {t("tplCancel")}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleSaveTemplate()}
-                disabled={!draft.title.trim() || !draft.prompt.trim()}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 9,
-                  borderRadius: 8,
-                  backgroundColor: theme.colors.accent,
-                  opacity: !draft.title.trim() || !draft.prompt.trim() ? 0.5 : 1,
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.accentForeground,
-                    fontSize: 13,
-                    fontWeight: "700",
-                  }}
-                >
-                  {t("tplSave")}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </Modal.Content>
-      </Modal>
+        onSave={handleSaveTemplate}
+      />
 
       {/* Template Delete Confirmation Modal */}
       <Modal
@@ -488,43 +563,43 @@ export function SettingsScreen({ theme, layout }: PluginSurfaceProps) {
           if (!open) setPendingDelete(null);
         }}
       >
-        <Modal.Content>
-          <View style={{ gap: 14 }}>
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13.5, lineHeight: 20 }}>
-              {pendingDelete
-                ? t("settingsDeleteTemplateBody", { title: pendingDelete.title })
-                : ""}
-            </Text>
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-              <Pressable
-                onPress={() => setPendingDelete(null)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  backgroundColor: theme.colors.surface2,
-                }}
-              >
-                <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
-                  {t("tplCancel")}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleConfirmDeleteTemplate()}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  backgroundColor: theme.colors.statusDanger,
-                }}
-              >
-                <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "700" }}>
-                  {t("tplDelete")}
-                </Text>
-              </Pressable>
+        {pendingDelete ? (
+          <Modal.Content>
+            <View style={{ gap: 14 }}>
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13.5, lineHeight: 20 }}>
+                {t("settingsDeleteTemplateBody", { title: pendingDelete.title })}
+              </Text>
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+                <Pressable
+                  onPress={() => setPendingDelete(null)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: theme.colors.surface2,
+                  }}
+                >
+                  <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
+                    {t("tplCancel")}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void handleConfirmDeleteTemplate()}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: theme.colors.statusDanger,
+                  }}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "700" }}>
+                    {t("tplDelete")}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </Modal.Content>
+          </Modal.Content>
+        ) : null}
       </Modal>
     </ScrollView>
   );
