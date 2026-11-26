@@ -1,5 +1,7 @@
 # Paseo Multigravity UX
 
+English | [简体中文](README.zh-CN.md)
+
 A focused, zero-conflict [Paseo](https://paseo.sh) plugin inspired by the best interactions of [Multigravity (`GHSaiMo/antigravity-mobile`)](https://github.com/GHSaiMo/antigravity-mobile), designed to fit Paseo's native minimalism without touching timeline rendering or duplicating existing plugins (`better-paseo`, `antigravity-accounts`, `model-switch`, `skills`).
 
 ## Features
